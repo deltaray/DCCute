@@ -1,0 +1,320 @@
+#!/usr/bin/python3
+
+# The DCC un*x terminal environment
+# Copyright 2017 deltaray (deltaray@slugbug.org)
+
+# USE AT YOUR OWN RISK!
+# This program is alpha quality.
+# This program does not fail gracefully at this time
+# Your python install probably already has all the modules below.
+
+import time
+import os
+import signal
+import sys
+import re
+import getopt
+import curses
+import serial
+import time
+
+
+defaultspeedlimit = 10 # Set this to what you want up to 127
+
+
+class Decoder:
+    dtype = 'generic'
+    functions = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    address = 0
+    name = ""
+     
+    def __init__(self, address, name):
+        self.address = address
+        self.name = name
+        for i in range(0,28): # Make the state array for decoder functions.
+            self.functions.append(False)
+
+
+
+    def funcflip(number):
+        self.functions[number] = int(not self.functions[number])
+
+
+
+
+class Locomotive(Decoder):
+    dtype = 'locomotive'
+    speed = 0
+    maxspeed = defaultspeedlimit
+    direction = 0
+
+    def __init__(self, address, name):
+        self.dtype = 'locomotive'
+        self.address = address
+        self.name = name
+        self.speed = 0
+        self.maxspeed = defaultspeedlimit
+        self.direction = 0
+        
+    def throttledown(self, change):
+        self.speed -= change
+        if self.speed < 0:
+            self.speed = 0
+        throttlestring = "<t 1 {0} {1} {2}>".format(str(self.address),str(self.speed),str(int(self.direction)))
+        sendtoserial(throttlestring)
+        return self.speed
+
+    def throttleup(self, change):
+        self.speed += change
+        if self.speed > self.maxspeed:
+            self.speed = self.maxspeed
+        throttlestring = "<t 1 {0} {1} {2}>".format(str(self.address),str(self.speed),str(int(self.direction)))
+        sendtoserial(throttlestring)
+        return self.speed
+
+    def flip_direction(self):
+        self.direction = int(not self.direction)
+        serial_buffer = "<t 1 {0} {1} {2}>".format(str(self.address), str(self.speed), str(int(self.direction)))
+        sendtoserial(serial_buffer)
+        return True
+
+
+    def function(self, func_num):
+        function_buffer = ""
+
+        self.functions[func_num] = int(not self.functions[func_num])
+
+        if (func_num <= 4): # F0 - F4
+            first5sum = 128 + self.functions[0]*16 + self.functions[1]*1 + self.functions[2]*2 + self.functions[3]*4 + self.functions[4]*8
+            function_buffer = "<f {0} {1}>".format(str(self.address),str(first5sum))
+
+        elif (func_num <= 8): # F5 - F8
+            second4sum = 176 + self.functions[5]*1 + self.functions[6]*2 + self.functions[7]*4 + self.functions[8]*8
+            function_buffer = "<f {0} {1}>".format(str(self.address), str(second4sum))
+
+        elif (func_num <= 12): # F9 - F12 
+            third4sum = 160 + self.functions[9]*1 + self.functions[10]*2 + self.functions[11]*4 + self.functions[12]*8
+            function_buffer = "<f {0} {1}>".format(str(self.address), str(third4sum))
+
+        elif (func_num <= 20): # F13 - F20 (8 bits)
+            byte2 = 0
+            for i in range(0,8): # Ahhh, consistency
+                byte2 += self.functions[13+i]<<i
+
+            function_buffer = "<f {0} {1} {2}>".format(str(self.address), str(222), str(byte2))
+        elif (func_num <= 28):
+            byte2 = 0
+            for i in range(0,8):
+                byte2 += self.functions[21+i]<<i
+
+            function_buffer = "<f {0} {1} {2}>".format(str(self.address), str(223), str(byte2))
+
+        else: # Unknown function
+            return False
+
+        sendtoserial(function_buffer)
+        return True
+
+
+# Define your locomotives in this array. Soon to be done from the interface.
+decoders = [
+            Locomotive(3,'CN 5930'),
+            Locomotive(4,'CP 5006')
+           ]
+
+selected = 0
+    
+
+serialon = False
+
+if (len(sys.argv) > 1):
+    serialon = True
+    serialdev = sys.argv[1]
+    serialport = serial.Serial()
+    serialport.baudrate = 115200
+    serialport.port = serialdev
+    serialport.timeout = 0
+    serialport
+    serialport.open()
+    
+    
+stdscr = curses.initscr()
+curses.start_color()
+curses.noecho()
+curses.halfdelay(1)
+curses.cbreak()
+stdscr.keypad(1)
+
+
+begin_x = 0; begin_y = 0
+height = 25; width = 80
+win = curses.newwin(height, width, begin_y, begin_x)
+
+
+
+def sendtoserial(string):
+    seriallastdisplay = "Sent to serial: {0:65}".format(string)
+    #stdscr.addstr(1,1, seriallastdisplay, curses.color_pair(1))
+    stdscr.addstr(1,1, seriallastdisplay)
+    if (serialon):
+        serialport.write(string.encode('ascii'))
+    return True
+
+
+def exitprogram():
+    curses.nocbreak(); stdscr.keypad(0); curses.echo()
+    curses.endwin()
+    sys.exit(0)
+    return True
+
+def signal_handler(signalnumber, frame):
+    exitprogram()
+    return True
+
+
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+##########################################
+# MAIN
+
+#if serialport.is_open == False:
+#    exitprogram
+
+
+#print "Serialdev: " + serialdev
+
+power = 0
+speed = 0
+speedincrement=1
+direction = 1
+
+curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
+curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
+curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
+curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+curses.init_pair(5, curses.COLOR_RED, curses.COLOR_WHITE)
+
+
+stdscr.border()
+stdscr.addstr(0,30, "[ DCCute ]")
+
+windowheight = 5
+
+windows = []
+w = 0
+for d in decoders:
+    windows.append(curses.newwin(windowheight,80,2+w*windowheight,2))
+    w=w+1
+
+
+c = -1
+
+while 1:
+
+    # Update the display.
+    # TODO: Change this to use object pointers instead of index sync.
+    i = 0;
+
+    for decoder in decoders:
+        windows[i].addstr(1,1, "Main Track Power: {0}".format(power == True and "On " or "Off") , curses.color_pair(5))
+        windows[i].addstr(2,1, "Speed:{0:>3}".format(str(decoders[i].speed)), curses.color_pair(3))
+        windows[i].addstr(3,1, "Direction:{0:>3}".format(decoders[i].direction == True and "Forward" or "Reverse"), curses.color_pair(4))
+        i=i+1
+
+    i = 0
+    for win in windows:
+        if i == selected:
+            win.bkgd(curses.color_pair(2))
+        else:
+            win.bkgd(curses.color_pair(1))
+        win.border()
+        i=i+1
+
+
+    for win in windows:
+        win.refresh()
+
+    stdscr.refresh()
+
+    #c = ord('z')
+    # Doing this for now because it doesn't draw all the windows until I press a key.
+    if (c != -1): 
+        c = stdscr.getch()
+    else:
+        c = 0
+
+
+    if c == ord('p'):
+        # Power on/off track
+        if (power == 0):
+            power = 1
+        else:
+            power = 0
+        sendtoserial('<' + str(power) + '>')
+
+    elif c == ord('q'):
+        exitprogram
+        curses.nocbreak(); stdscr.keypad(0); curses.echo()
+        curses.endwin()
+        sys.exit(0)
+
+    elif c == ord('1'):
+        selected = 0
+    elif c == ord('2'):
+        selected = 1
+    elif c == ord('3'):
+        selected = 2
+    elif c == ord('4'):
+        selected = 3
+    elif c == ord('5'):
+        selected = 4
+    elif c == ord('6'):
+        selected = 5
+    elif c == ord('7'):
+        selected = 6
+    elif c == ord('8'):
+        selected = 7
+    elif c == ord('9'):
+        selected = 8
+    elif c == ord('l'):
+        decoders[selected].function(0)
+    elif c == ord('b'):
+        decoders[selected].function(1)
+    elif c == ord('h'):
+        decoders[selected].function(2)
+    elif c == ord('H'):
+        decoders[selected].function(3)
+    elif c == ord('d'):
+        decoders[selected].function(7)
+    elif c == ord('m'):
+        decoders[selected].function(8)
+    elif c == ord('c'):
+        decoders[selected].function(13)
+    elif c == ord('a'):
+        decoders[selected].function(23)
+    elif c in [curses.KEY_F1,curses.KEY_F2,curses.KEY_F3,curses.KEY_F4,curses.KEY_F5,
+               curses.KEY_F6,curses.KEY_F7,curses.KEY_F8,curses.KEY_F9,curses.KEY_F10,
+               curses.KEY_F11,curses.KEY_F12,curses.KEY_F13,curses.KEY_F14,curses.KEY_F15,
+               curses.KEY_F16,curses.KEY_F17,curses.KEY_F18,curses.KEY_F19,curses.KEY_F20,
+               curses.KEY_F21,curses.KEY_F22,curses.KEY_F23,curses.KEY_F24,curses.KEY_F25,
+               curses.KEY_F26,curses.KEY_F27,curses.KEY_F28]:
+        functionnumberstring = curses.keyname(c).decode('utf-8')
+        matchfuncregex = re.compile('KEY_F\(([0-9]{1,2})\)')
+        match = matchfuncregex.match(functionnumberstring)
+        function_number = int(match.group(1))
+        decoders[selected].function(function_number)
+
+    elif c == curses.KEY_LEFT:
+        decoders[selected].flip_direction()
+    elif c == curses.KEY_RIGHT:
+        decoders[selected].flip_direction()
+    elif c == curses.KEY_UP:
+        decoders[selected].throttleup(speedincrement)
+    elif c == curses.KEY_DOWN:
+        decoders[selected].throttledown(speedincrement)
+
+
+exitprogram
+
