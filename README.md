@@ -16,6 +16,10 @@ railroads utilizing a DCC control system.  It's purpose is to allow the user to
 test their DCC++ system quickly. It's keyboard based interface also allows the
 user to quickly control multiple locomotives and decoders.
 
+Screenshot of DCCute
+![Screenshot of DCCute](http://suso.suso.org/images/dccute.png "Screenshot of DCCute")
+
+
 # License
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public

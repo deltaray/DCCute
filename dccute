@@ -169,7 +169,7 @@ win = curses.newwin(height, width, begin_y, begin_x)
 
 
 def sendtoserial(string):
-    seriallastdisplay = "Sent to serial: {0:65}".format(string)
+    seriallastdisplay = "Sent to serial: {0:50}".format(string)
     #stdscr.addstr(1,1, seriallastdisplay, curses.color_pair(1))
     stdscr.addstr(1,1, seriallastdisplay)
     if (serialon):
@@ -222,7 +222,7 @@ windowheight = 5
 windows = []
 w = 0
 for d in decoders:
-    windows.append(curses.newwin(windowheight,80,3+w*windowheight,2))
+    windows.append(curses.newwin(windowheight,75,3+w*windowheight,2))
     w=w+1
 
 
