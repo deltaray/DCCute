@@ -3,10 +3,24 @@
 # The DCC un*x terminal environment
 # Copyright 2017 deltaray (deltaray@slugbug.org)
 
+#    This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>. 
+
 # USE AT YOUR OWN RISK!
 # This program is alpha quality.
 # This program does not fail gracefully at this time
 # Your python install probably already has all the modules below.
+
 
 import time
 import os
@@ -24,7 +38,9 @@ defaultspeedlimit = 10 # Set this to what you want up to 127
 
 class Decoder:
     dtype = 'generic'
-    functions = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    functions = [0,0,0,0,0,0,0,0,0,0,
+                 0,0,0,0,0,0,0,0,0,0,
+                 0,0,0,0,0,0,0,0]
     address = 0
     name = ""
      
@@ -46,7 +62,7 @@ class Locomotive(Decoder):
     dtype = 'locomotive'
     speed = 0
     maxspeed = defaultspeedlimit
-    direction = 0
+    direction = 1
 
     def __init__(self, address, name):
         self.dtype = 'locomotive'
@@ -54,7 +70,7 @@ class Locomotive(Decoder):
         self.name = name
         self.speed = 0
         self.maxspeed = defaultspeedlimit
-        self.direction = 0
+        self.direction = 1
         
     def throttledown(self, change):
         self.speed -= change
@@ -119,7 +135,7 @@ class Locomotive(Decoder):
 # Define your locomotives in this array. Soon to be done from the interface.
 decoders = [
             Locomotive(3,'CN 5930'),
-            Locomotive(4,'CP 5006')
+            Locomotive(4,'CP 5006'),
            ]
 
 selected = 0
@@ -195,6 +211,7 @@ curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)
 curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLACK)
 curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
 curses.init_pair(5, curses.COLOR_RED, curses.COLOR_WHITE)
+curses.init_pair(6, curses.COLOR_BLUE, curses.COLOR_BLACK)
 
 
 stdscr.border()
@@ -205,7 +222,7 @@ windowheight = 5
 windows = []
 w = 0
 for d in decoders:
-    windows.append(curses.newwin(windowheight,80,2+w*windowheight,2))
+    windows.append(curses.newwin(windowheight,80,3+w*windowheight,2))
     w=w+1
 
 
@@ -216,11 +233,13 @@ while 1:
     # Update the display.
     # TODO: Change this to use object pointers instead of index sync.
     i = 0;
+    
+    stdscr.addstr(2,2, "Main Track Power: {0}".format(power == True and "On " or "Off"), curses.color_pair(1))
 
     for decoder in decoders:
-        windows[i].addstr(1,1, "Main Track Power: {0}".format(power == True and "On " or "Off") , curses.color_pair(5))
-        windows[i].addstr(2,1, "Speed:{0:>3}".format(str(decoders[i].speed)), curses.color_pair(3))
-        windows[i].addstr(3,1, "Direction:{0:>3}".format(decoders[i].direction == True and "Forward" or "Reverse"), curses.color_pair(4))
+        windows[i].addstr(1,2, "Name: {0}".format(str(decoders[i].name)), curses.color_pair(3))
+        windows[i].addstr(2,2, "Speed: {0:>3}".format(str(decoders[i].speed)), curses.color_pair(3))
+        windows[i].addstr(3,2, "Direction: {0:>3}".format(decoders[i].direction == True and "Forward" or "Reverse"), curses.color_pair(4))
         i=i+1
 
     i = 0
@@ -230,6 +249,7 @@ while 1:
         else:
             win.bkgd(curses.color_pair(1))
         win.border()
+        win.addstr(0,3, "| {0} |".format(str(i+1)), curses.color_pair(6))
         i=i+1
 
 
